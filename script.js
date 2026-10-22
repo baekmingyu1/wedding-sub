@@ -99,7 +99,7 @@
     const placeholder = document.createElement("span");
     placeholder.className = kind === "opening" ? "opening__placeholder" : "gallery__placeholder";
     placeholder.textContent = kind === "opening"
-      ? `SCENE ${String(index + 1).padStart(2, "0")} · ${path ? "불러오는 중" : "사진 준비 중"}`
+      ? `사진 ${path ? "불러오는 중" : "준비 중"}`
       : `PHOTO ${String(index + 1).padStart(2, "0")}`;
     wrapper.append(placeholder);
 
@@ -118,7 +118,7 @@
       else img.classList.add("is-loading");
       // Safari must paint the photograph with its frame, not its blur alone.
       img.decoding = kind === "opening" ? "sync" : "async";
-      img.alt = kind === "opening" ? "" : `두 사람의 사진 ${index + 1}`;
+      img.alt = kind === "opening" ? "두 사람의 웨딩 사진" : `두 사람의 사진 ${index + 1}`;
       if (kind === "gallery") img.loading = "lazy";
       if (kind === "opening") img.fetchPriority = index === 0 ? "high" : "low";
       if (photo.srcset) {
@@ -135,16 +135,13 @@
       }
       img.addEventListener("load", async () => {
         if (kind === "opening") {
-          // Free the download slot before decoding; preparation still gates the cover.
-          wrapper.dispatchEvent(new Event("frame-downloaded"));
           const loadingSource = img.currentSrc;
           const usable = await prepareOpeningImage(img);
           if (img.currentSrc !== loadingSource) return;
           if (!usable) {
             if (wrapper.dataset.status !== "failed") {
-              placeholder.textContent = `SCENE ${String(index + 1).padStart(2, "0")} · 사진을 불러올 수 없습니다`;
+              placeholder.textContent = "사진을 불러올 수 없습니다";
               wrapper.dataset.status = "failed";
-              wrapper.dispatchEvent(new Event("frame-settled"));
               scheduleUpdate();
             }
             return;
@@ -157,15 +154,13 @@
         wrapper.classList.remove("opening__frame--fallback");
         if (kind === "opening") {
           wrapper.dataset.status = "ready";
-          wrapper.dispatchEvent(new Event("frame-settled"));
           scheduleUpdate();
         }
       });
       img.addEventListener("error", () => {
         if (kind !== "opening") { wrapper.classList.add("gallery__item--failed"); return; }
-        placeholder.textContent = `SCENE ${String(index + 1).padStart(2, "0")} · 사진을 불러올 수 없습니다`;
+        placeholder.textContent = "사진을 불러올 수 없습니다";
         wrapper.dataset.status = "failed";
-        wrapper.dispatchEvent(new Event("frame-settled"));
         scheduleUpdate();
       });
       if (kind === "opening") img.dataset.src = path;
@@ -186,7 +181,7 @@
     host.append(wrapper);
   }
 
-  const openingPhotos = (content.openingPhotos || []).filter(Boolean);
+  const openingPhotos = (content.openingPhotos || []).filter(Boolean).slice(0, 1);
   if (!openingPhotos.length) openingPhotos.push("");
   openingPhotos.forEach((path, index) => addPhoto(frameHost, path, index, "opening"));
 
@@ -222,7 +217,7 @@
     Math.round(index * (openingPhotos.length - 1) / Math.max(1, galleryPhotos.length - 1))
   ];
 
-  // Warm the HTTP cache after the intro is ready, without retaining every decoded image.
+  // Warm the HTTP cache after the envelope is opened, without retaining every decoded image.
   let galleryPreloadStarted = false;
   function preloadGallery() {
     if (galleryPreloadStarted || navigator.connection?.saveData) return;
@@ -1220,7 +1215,6 @@
   let bgmStarted = false;
   let bgmMuted = false;
   let bgmBlocked = false;
-  let bgmSuspended = false;
   let bgmAttempt = 0;
   function renderBgm() {
     const audible = bgmStarted && !bgmMuted && !bgmBlocked && !bgm.paused;
@@ -1229,7 +1223,7 @@
     bgmButton.setAttribute("aria-pressed", String(audible));
   }
   function playBgm() {
-    if (!bgmStarted || bgmSuspended || document.hidden) return;
+    if (!bgmStarted || document.hidden) return;
     const attempt = ++bgmAttempt;
     bgm.muted = bgmMuted;
     bgm.play().then(() => {
@@ -1276,14 +1270,6 @@
 
   const opening = document.getElementById("opening");
   const frames = [...frameHost.children];
-  const openingCopy = document.querySelector(".opening__copy");
-  const openingFinal = document.getElementById("opening-final");
-  const openingLoader = document.getElementById("opening-loader");
-  const loaderCount = document.getElementById("opening-loader-count");
-  const loaderProgress = document.getElementById("opening-loader-progress");
-  const openingCount = document.getElementById("opening-count");
-  const openingProgress = document.getElementById("opening-progress");
-  const skipButton = document.getElementById("opening-skip");
   const sections = ["opening", "invitation", "calendar", "countdown", "gallery", "rsvp", "couple", "account", "location", "directions", "wreath", "share"]
     .map((id) => document.getElementById(id));
   const firstSection = document.getElementById("invitation");
@@ -1296,264 +1282,41 @@
   const coverButton = document.getElementById("cover-open");
   const coverReveal = document.getElementById("cover-reveal");
   const coverPhoto = document.getElementById("cover-photo");
-  const coverHint = document.getElementById("cover-hint");
   const openingStage = document.querySelector(".opening__sticky");
-  const openingVeil = document.querySelector(".opening__veil");
   const coverWanted = startAtOpening && typeof coverDialog.showModal === "function";
   let coverPending = coverWanted;
-  let coverPreparing = coverWanted;
   let coverOpening = false;
   let coverTimer;
   let coverExpansion;
-  let autoplayActive = startAtOpening && !coverWanted;
-  let playbackComplete = false;
-  let autoplayIndex = 0;
-  let playbackRun = 0;
-  let hasLeftOpening = false;
-  let paintedScene = -1;
-  let frameLayer = 0;
-  let cancelFrameCleanup = () => {};
-  let finalMessageReady = false;
   let pending = false;
-  const loadQueue = [];
-  const frameRequests = new Map();
-  let activeLoads = 0;
-  let loadsEnabled = true;
-  const maxConcurrentLoads = 3;
-  let openingLocked = false;
-  const openingInertState = new Map();
-  const bodySections = [...document.querySelectorAll("main > :not(#opening), .footer, .side-nav, #gallery-dialog")];
-  const instantOpeningTop = () => window.scrollTo({ top: 0, left: 0, behavior: "instant" });
-  function setOpeningLocked(locked) {
-    if (openingLocked === locked) return;
-    openingLocked = locked;
-    document.documentElement.classList.toggle("opening-scroll-locked", locked);
-    if (locked) {
-      for (const element of bodySections) {
-        openingInertState.set(element, element.inert);
-        element.inert = true;
-      }
-      instantOpeningTop();
-      if (document.activeElement !== document.body && !opening.contains(document.activeElement) &&
-          !document.activeElement.matches(".skip-link, #bgm-toggle")) skipButton.focus({ preventScroll: true });
-    } else {
-      for (const [element, inert] of openingInertState) element.inert = inert;
-      openingInertState.clear();
-    }
-  }
-  window.addEventListener("wheel", (event) => {
-    if (openingLocked && !event.ctrlKey) event.preventDefault();
-  }, { passive: false });
-  window.addEventListener("touchmove", (event) => {
-    if (openingLocked && event.touches.length === 1 && (window.visualViewport?.scale || 1) <= 1) event.preventDefault();
-  }, { passive: false });
-  document.addEventListener("keydown", (event) => {
-    if (!openingLocked) return;
-    const scrollKeys = ["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "];
-    if (scrollKeys.includes(event.key) && !(event.key === " " && event.target.closest("button"))) event.preventDefault();
-  });
-  document.addEventListener("focusin", (event) => {
-    if (openingLocked && !opening.contains(event.target) && !event.target.matches(".skip-link, #bgm-toggle")) {
-      skipButton.focus({ preventScroll: true });
-    }
-  });
-  // Release DOM state when leaving; reapply it if a running intro is restored from BFCache.
-  window.addEventListener("pagehide", () => setOpeningLocked(false));
-  window.addEventListener("pageshow", () => {
-    if (autoplayActive || coverPreparing) setOpeningLocked(true);
-  });
-  setOpeningLocked(autoplayActive || coverPreparing);
-  openingLoader.hidden = !(autoplayActive || coverPreparing);
 
-  if (coverWanted || autoplayActive || motionReduced.matches) {
-    opening.classList.add("opening--short");
-  } else {
-    // Keep the original scroll-driven sequence for deep links and restored scroll positions.
-    opening.style.setProperty("--sequence-height", `${Math.max(300, 170 + openingPhotos.length * 22)}svh`);
-  }
-
-  function loadOpeningFrame(index, highPriority = false) {
-    const image = frames[index]?.querySelector("img[data-src]");
-    if (!image) return;
-    if (highPriority) image.fetchPriority = "high";
-    const source = frames[index].querySelector("source[data-srcset]");
-    if (source) {
-      source.srcset = source.dataset.srcset;
-      delete source.dataset.srcset;
-    }
-    if (image.dataset.srcset) {
-      image.srcset = image.dataset.srcset;
-      delete image.dataset.srcset;
-    }
-    image.src = image.dataset.src;
-    delete image.dataset.src;
-  }
-
-  function keepPreviousUntilCovered(next) {
-    cancelFrameCleanup();
-    let timer;
-    let paint;
-    let cancelled = false;
-    const deadline = performance.now() + 1200;
-    const cleanup = () => {
-      cancelled = true;
-      clearTimeout(timer);
-      cancelAnimationFrame(paint);
-      next.removeEventListener("transitionend", checkCoverage);
-      next.removeEventListener("transitioncancel", checkCoverage);
-    };
-    function checkCoverage() {
-      if (cancelled || next !== frames[paintedScene]) return;
-      clearTimeout(timer);
-      if (!document.hidden && Number(getComputedStyle(next).opacity) >= 1) {
-        // Keep the old photo through a rendering opportunity after the fade.
-        if (!paint) paint = requestAnimationFrame(() => {
-          paint = 0;
-          if (cancelled || document.hidden || next !== frames[paintedScene]) { checkCoverage(); return; }
-          if (Number(getComputedStyle(next).opacity) < 1) { checkCoverage(); return; }
-          for (const frame of frames) {
-            if (frame === next || frame.dataset.staged === "true") continue;
-            frame.style.opacity = "0";
-            frame.style.visibility = "hidden";
-            frame.classList.remove("is-rendering");
-          }
-          cleanup();
-        });
-      } else {
-        if (!document.hidden && performance.now() >= deadline) {
-          // A missing/cancelled transition must not stall playback or expose the backdrop.
-          const transition = next.style.transition;
-          next.style.transition = "none";
-          next.style.opacity = "1";
-          void getComputedStyle(next).opacity;
-          next.style.transition = transition;
-        }
-        timer = setTimeout(checkCoverage, 50);
-      }
-    }
-    cancelFrameCleanup = cleanup;
-    next.addEventListener("transitionend", checkCoverage);
-    next.addEventListener("transitioncancel", checkCoverage);
-    checkCoverage();
-  }
-
-  function decodeOpeningForPlayback(index, refresh = true) {
-    const frame = frames[index];
-    const image = frame?.querySelector("img");
-    if (frame?.dataset.status !== "ready" || !image?.complete || !image.naturalWidth) return Promise.resolve(false);
-    // Successful preload decodes may be evicted while the envelope is open.
-    // Refresh those at playback; retain the fallback for broken decode() APIs.
-    return prepareOpeningImage(image, refresh);
-  }
-
-  async function stageOpeningFrame(index, run) {
-    if (!autoplayActive || run !== playbackRun) return false;
-    const frame = frames[index];
-    if (frame?.dataset.status !== "ready") return false;
-    if (index !== paintedScene) {
-      // Give Safari a visible render layer below the current photo before fading in.
-      frame.dataset.staged = "true";
-      frame.style.transition = "none";
-      frame.style.zIndex = "0";
-      frame.style.visibility = "visible";
-      frame.style.opacity = "1";
-      frame.classList.add("is-rendering");
-    }
-    const ready = await decodeOpeningForPlayback(index);
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    if (!ready && run === playbackRun) clearStagedOpeningFrames();
-    return ready && autoplayActive && run === playbackRun;
-  }
-
-  function clearStagedOpeningFrames() {
-    for (const frame of frames) {
-      if (frame.dataset.staged !== "true") continue;
-      delete frame.dataset.staged;
-      frame.style.opacity = "0";
-      frame.style.visibility = "hidden";
-      frame.style.transition = "";
-      frame.classList.remove("is-rendering");
-    }
+  // Load just the representative photo. Neither the envelope nor scrolling waits for it.
+  const firstPhoto = frames[0].querySelector("img");
+  const firstSource = frames[0].querySelector("source[data-srcset]");
+  if (firstSource) firstSource.srcset = firstSource.dataset.srcset;
+  if (firstPhoto) {
+    if (firstPhoto.dataset.srcset) firstPhoto.srcset = firstPhoto.dataset.srcset;
+    firstPhoto.src = firstPhoto.dataset.src;
   }
 
   function updateScroll() {
     pending = false;
-    if (openingLocked && window.scrollY !== 0) instantOpeningTop();
-    if (!photoDialogActive && !photoHistoryPending && !photoRestorePending && playbackComplete && hasLeftOpening && window.scrollY < 5) {
-      replayOpening();
-      return;
-    }
-    const total = Math.max(1, opening.offsetHeight - window.innerHeight);
-    const openingRect = opening.getBoundingClientRect();
-    const progress = Math.min(1, Math.max(0, -openingRect.top / total));
-    const introEnd = Math.min(.5, window.innerHeight * .7 / total);
-    // Hold the last photograph long enough for the closing line to be read.
-    const sequenceEnd = .86;
-    const sequenceProgress = Math.min(1, Math.max(0, (progress - introEnd) / (sequenceEnd - introEnd)));
-    const sceneIndex = playbackComplete || autoplayActive
-        ? autoplayIndex
-        : Math.min(frames.length - 1, Math.floor(sequenceProgress * frames.length));
-    const openingVisible = openingRect.bottom > 0 && openingRect.top < window.innerHeight;
-    const showSideNav = !openingLocked && firstSection.getBoundingClientRect().top <= 0;
+    const showSideNav = !coverPending && firstSection.getBoundingClientRect().top <= 0;
     let active = "opening";
     for (const section of sections) {
       if (section.getBoundingClientRect().top <= window.innerHeight * .45) active = section.id;
     }
-    const pageRange = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
-    const navProgressHeight = `${Math.min(100, window.scrollY / pageRange * 100)}%`;
-    if (openingVisible || autoplayActive) {
-      if (!autoplayActive && !playbackComplete) {
-        requestOpeningFrame(sceneIndex, true);
-        if (!motionReduced.matches) {
-          requestOpeningFrame(sceneIndex + 1);
-          requestOpeningFrame(sceneIndex + 2);
-        }
-      }
-      const displayIndex = frames[sceneIndex].dataset.status === "ready" ||
-        frames[sceneIndex].dataset.status === "failed" || paintedScene < 0
-        ? sceneIndex : paintedScene;
-      if (displayIndex !== paintedScene) {
-        const next = frames[displayIndex];
-        if (next.dataset.staged === "true") {
-          // Establish the fade's start while this layer is still below the old photo.
-          next.style.opacity = "0";
-          void getComputedStyle(next).opacity;
-          next.style.transition = "";
-          delete next.dataset.staged;
-        }
-        next.classList.add("is-rendering");
-        next.style.zIndex = String(++frameLayer);
-        next.style.visibility = "visible";
-        next.style.opacity = "1";
-        paintedScene = displayIndex;
-        openingCount.textContent = `${String(displayIndex + 1).padStart(2, "0")} / ${String(frames.length).padStart(2, "0")}`;
-        keepPreviousUntilCovered(next);
-      }
-      openingCopy.style.opacity = autoplayActive || playbackComplete
-        ? (sceneIndex === 0 ? "1" : "0")
-        : Math.max(0, 1 - progress / (introEnd * .8));
-      const showFinal = openingVisible && (
-        autoplayActive || playbackComplete ? finalMessageReady : sceneIndex === frames.length - 1
-      );
-      openingFinal.classList.toggle("is-visible", showFinal);
-      openingFinal.setAttribute("aria-hidden", String(!showFinal));
-      const frameProgress = autoplayActive || playbackComplete ? (sceneIndex + 1) / frames.length : sequenceProgress;
-      openingProgress.style.height = `${frameProgress * 100}%`;
-    }
-
-    if (playbackComplete && showSideNav) hasLeftOpening = true;
     sideNav.classList.toggle("is-hidden", !showSideNav);
     sideNav.toggleAttribute("inert", !showSideNav);
     if (showSideNav) sideNav.removeAttribute("aria-hidden");
     else sideNav.setAttribute("aria-hidden", "true");
-
     links.forEach((link) => {
       if (link.dataset.nav === active) link.setAttribute("aria-current", "location");
       else link.removeAttribute("aria-current");
     });
-    navProgress.style.height = navProgressHeight;
+    const pageRange = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+    navProgress.style.height = `${Math.min(100, window.scrollY / pageRange * 100)}%`;
   }
-
   function scheduleUpdate() {
     if (pending) return;
     pending = true;
@@ -1561,218 +1324,7 @@
   }
   window.addEventListener("scroll", scheduleUpdate, { passive: true });
   window.addEventListener("resize", scheduleUpdate);
-  motionReduced.addEventListener("change", scheduleUpdate);
   updateScroll();
-
-  function requestOpeningFrame(index, highPriority = false) {
-    const frame = frames[index];
-    if (!frame || frame.dataset.status === "failed") return Promise.resolve(false);
-    if (frame.dataset.status === "ready") return Promise.resolve(true);
-    if (frameRequests.has(index)) return frameRequests.get(index);
-    let resolveRequest;
-    const promise = new Promise((resolve) => { resolveRequest = resolve; });
-    frameRequests.set(index, promise);
-    loadQueue.push({ index, highPriority, resolve: resolveRequest });
-    pumpOpeningLoads();
-    return promise;
-  }
-
-  function pumpOpeningLoads() {
-    while (loadsEnabled && activeLoads < maxConcurrentLoads && loadQueue.length) {
-      const job = loadQueue.shift();
-      const frame = frames[job.index];
-      activeLoads += 1;
-      frame.dataset.status = "loading";
-      const timeout = window.setTimeout(() => {
-        if (frame.dataset.status !== "loading") return;
-        frame.dataset.status = "failed";
-        const placeholder = frame.querySelector(".opening__placeholder");
-        if (placeholder) placeholder.textContent = `SCENE ${String(job.index + 1).padStart(2, "0")} · 사진을 불러올 수 없습니다`;
-        frame.dispatchEvent(new Event("frame-settled"));
-      }, 8000);
-      let downloadReleased = false;
-      const releaseDownload = () => {
-        if (downloadReleased) return;
-        downloadReleased = true;
-        window.clearTimeout(timeout);
-        activeLoads -= 1;
-        pumpOpeningLoads();
-      };
-      frame.addEventListener("frame-downloaded", releaseDownload, { once: true });
-      frame.addEventListener("frame-settled", () => {
-        frame.removeEventListener("frame-downloaded", releaseDownload);
-        releaseDownload();
-        frameRequests.delete(job.index);
-        job.resolve(frame.dataset.status === "ready");
-      }, { once: true });
-      loadOpeningFrame(job.index, job.highPriority);
-    }
-  }
-
-  function stopPendingOpeningLoads() {
-    loadsEnabled = false;
-    for (const job of loadQueue.splice(0)) {
-      frameRequests.delete(job.index);
-      job.resolve(false);
-    }
-  }
-
-  function finishOpening(navigate = true) {
-    if (!autoplayActive) return;
-    playbackRun += 1;
-    cancelFrameCleanup();
-    clearStagedOpeningFrames();
-    autoplayActive = false;
-    setOpeningLocked(false);
-    playbackComplete = true;
-    bgmSuspended = false;
-    if (bgmStarted) playBgm();
-    else { bgmAttempt += 1; bgm.pause(); }
-    hasLeftOpening = false;
-    stopPendingOpeningLoads();
-    openingLoader.hidden = true;
-    openingLoader.classList.remove("is-exiting");
-    updateScroll();
-    preloadGallery();
-    if (navigate) navigateToInvitation();
-  }
-
-  function replayOpening({ fromCover = false } = {}) {
-    if (galleryDialog.open) return;
-    opening.hidden = false;
-    // Keep audio continuous across the cover transition and intro replays.
-    if (bgmStarted) playBgm();
-    else startBgm();
-    playbackRun += 1;
-    cancelFrameCleanup();
-    clearStagedOpeningFrames();
-    autoplayActive = true;
-    playbackComplete = false;
-    hasLeftOpening = false;
-    autoplayIndex = 0;
-    finalMessageReady = false;
-    loadsEnabled = true;
-    pumpOpeningLoads();
-    opening.classList.add("opening--short");
-    opening.classList.toggle("opening--cover-handoff", fromCover);
-    opening.style.removeProperty("--sequence-height");
-    openingLoader.classList.remove("is-exiting");
-    // The cover is shown only after preparation; never show a second loader after it.
-    openingLoader.hidden = fromCover || frames.every((frame) => ["ready", "failed"].includes(frame.dataset.status));
-    setOpeningLocked(autoplayActive);
-    const root = document.documentElement;
-    const previousScrollBehavior = root.style.scrollBehavior;
-    root.style.scrollBehavior = "auto";
-    window.scrollTo(0, 0);
-    root.style.scrollBehavior = previousScrollBehavior;
-    if (location.hash !== "#opening") {
-      try { history.replaceState(null, "", "#opening"); }
-      catch { /* Replay still works when local file history is unavailable. */ }
-    }
-    requestOpeningFrame(0, true);
-    updateScroll();
-    playOpening(playbackRun);
-  }
-
-  document.querySelectorAll('a[href="#opening"]').forEach((link) => {
-    link.addEventListener("click", (event) => {
-      event.preventDefault();
-      replayOpening();
-    });
-  });
-
-  function navigateToInvitation() {
-    firstSection.tabIndex = -1;
-    firstSection.focus({ preventScroll: true });
-    window.requestAnimationFrame(() => firstSection.scrollIntoView({ behavior: motionReduced.matches ? "instant" : "smooth" }));
-  }
-  function skipOpening(event) {
-    event.preventDefault();
-    if (coverPending) finishCoverOpening(true);
-    else if (autoplayActive) finishOpening();
-    else navigateToInvitation();
-  }
-  document.querySelector(".skip-link").addEventListener("click", skipOpening);
-
-  skipButton.addEventListener("click", skipOpening);
-
-  async function waitPlayback(milliseconds, run) {
-    let remaining = milliseconds;
-    while (remaining > 0 && autoplayActive && run === playbackRun) {
-      const started = performance.now();
-      await new Promise((resolve) => window.setTimeout(resolve, Math.min(remaining, 80)));
-      if (!document.hidden) remaining -= performance.now() - started;
-    }
-  }
-
-  async function waitUntilActive(run) {
-    while (document.hidden && autoplayActive && run === playbackRun) {
-      await new Promise((resolve) => window.setTimeout(resolve, 80));
-    }
-  }
-
-  async function prepareOpeningFrames(isCurrent) {
-    let settled = 0;
-    loaderCount.textContent = `00 / ${String(frames.length).padStart(2, "0")}`;
-    loaderProgress.style.width = "0%";
-    const prepared = frames.map((_, index) =>
-      requestOpeningFrame(index, index === 0).then(() => {
-        settled += 1;
-        if (isCurrent()) {
-          loaderCount.textContent = `${String(settled).padStart(2, "0")} / ${String(frames.length).padStart(2, "0")}`;
-          loaderProgress.style.width = `${settled / frames.length * 100}%`;
-        }
-      })
-    );
-    await Promise.all(prepared);
-  }
-
-  async function playOpening(run) {
-    if (!autoplayActive || run !== playbackRun) return;
-    await prepareOpeningFrames(() => autoplayActive && run === playbackRun);
-    await waitUntilActive(run);
-    if (!autoplayActive || run !== playbackRun) return;
-    if (!openingLoader.hidden) {
-      openingLoader.classList.add("is-exiting");
-      await waitPlayback(550, run);
-      if (!autoplayActive || run !== playbackRun) return;
-      openingLoader.hidden = true;
-    }
-    preloadGallery();
-    const preparedNext = new Map();
-    const warmNext = (index) => {
-      if (index < frames.length && !preparedNext.has(index)) preparedNext.set(index, stageOpeningFrame(index, run));
-    };
-    warmNext(0);
-    for (let index = 0; index < frames.length && autoplayActive && run === playbackRun; index += 1) {
-      await waitUntilActive(run);
-      if (!autoplayActive || run !== playbackRun) return;
-      // Prepare and render the next photo while the current one stays visible.
-      warmNext(index);
-      const prepared = await preparedNext.get(index);
-      const ready = prepared && await decodeOpeningForPlayback(index, false);
-      await waitUntilActive(run);
-      if (!autoplayActive || run !== playbackRun) return;
-      if (ready) {
-        if (index === 0) startBgm();
-        autoplayIndex = index;
-        updateScroll();
-      }
-      warmNext(index + 1);
-      if (index === frames.length - 1) {
-        // Let the last photo settle before revealing the closing line.
-        await waitPlayback(500, run);
-        if (!autoplayActive || run !== playbackRun) return;
-        finalMessageReady = true;
-        updateScroll();
-      }
-      // Reduced motion changes the pace and effects, never whether photos advance.
-      // Read the preference at each handoff so changing it does not stop playback.
-      const middleFrameMs = motionReduced.matches ? 1800 : 200;
-      await waitPlayback(index === 0 ? 1300 : index === frames.length - 1 ? 2000 : middleFrameMs, run);
-    }
-    if (run === playbackRun) finishOpening();
-  }
 
   // Progressive enhancement: content is always visible without observers or animation support.
   function initContentMotion() {
@@ -1896,40 +1448,26 @@
   }
   initContentMotion();
 
-  function finishCoverOpening(skip = false) {
+  function finishCoverOpening() {
     if (!coverPending) return;
-    const fromCover = frameHost.parentElement === coverReveal || frameHost.parentElement === coverPhoto;
     coverPending = false;
-    coverPreparing = false;
     window.clearTimeout(coverTimer);
     coverExpansion?.cancel();
     coverExpansion = null;
-    if (fromCover) openingStage.prepend(frameHost, openingVeil);
+    openingStage.prepend(frameHost);
     coverReveal.hidden = true;
     coverDialog.classList.remove("is-opening");
+    coverButton.removeAttribute("aria-busy");
     coverDialog.close();
     document.documentElement.classList.remove("invitation-cover-open");
     bgmButton.hidden = false;
-    if (skip) {
-      openingLoader.hidden = true;
-      setOpeningLocked(false);
-      stopPendingOpeningLoads();
-      preloadGallery();
-      navigateToInvitation();
-    } else {
-      replayOpening({ fromCover });
-      skipButton.focus({ preventScroll: true });
-    }
+    opening.focus({ preventScroll: true });
+    scheduleUpdate();
+    preloadGallery();
   }
-  async function revealCoverPhoto() {
-    const loaded = await requestOpeningFrame(0, true);
-    if (!coverPending) return;
-    const decoded = loaded && await decodeOpeningForPlayback(0);
-    if (!coverPending) return;
-    // A failed photo still reaches the existing intro fallback, without a blank reveal.
-    if (!decoded || motionReduced.matches) { finishCoverOpening(); return; }
+  function revealCoverPhoto() {
     coverDialog.classList.add("is-opening");
-    // Let the seal, flap and card finish before expanding the actual photo layers.
+    // Keep the envelope transition; the photo stays still after the handoff.
     coverTimer = window.setTimeout(() => {
       if (!coverPending) return;
       const card = coverPhoto.getBoundingClientRect();
@@ -1940,7 +1478,7 @@
         width: `${card.width}px`, height: `${card.height}px`
       };
       Object.assign(coverReveal.style, start);
-      coverReveal.append(frameHost, openingVeil);
+      coverReveal.append(frameHost);
       coverReveal.hidden = false;
       if (typeof coverReveal.animate !== "function") { finishCoverOpening(); return; }
       coverExpansion = coverReveal.animate([start, {
@@ -1952,22 +1490,33 @@
   }
 
   function openCover() {
-    if (!coverPending || coverPreparing || coverOpening) return;
+    if (!coverPending || coverOpening) return;
     coverOpening = true;
-    // Keep this in the trusted click/touchend event, before any animation or await.
+    // Request audio within the user's gesture, before animations or asynchronous work.
     startBgm();
     if (motionReduced.matches) { finishCoverOpening(); return; }
     coverButton.setAttribute("aria-busy", "true");
-    if (frames[0].dataset.status !== "ready") coverHint.textContent = content.coverLoading;
-    void revealCoverPhoto();
+    revealCoverPhoto();
   }
+
+  coverDialog.addEventListener("wheel", (event) => {
+    if (!coverPending || event.ctrlKey || event.deltaY <= 0 || Math.abs(event.deltaX) >= event.deltaY) return;
+    event.preventDefault();
+    openCover();
+  }, { passive: false });
+  coverDialog.addEventListener("keydown", (event) => {
+    if (["ArrowDown", "PageDown"].includes(event.key)) {
+      event.preventDefault();
+      openCover();
+    }
+  });
 
   let coverTouch = null;
   let suppressCoverClick = false;
   coverDialog.addEventListener("touchstart", (event) => {
     coverTouch = null;
     suppressCoverClick = event.touches.length !== 1;
-    if (!coverPending || coverPreparing || coverOpening || event.touches.length !== 1) return;
+    if (!coverPending || coverOpening || event.touches.length !== 1) return;
     const touch = event.touches[0];
     coverTouch = { id: touch.identifier, x: touch.clientX, y: touch.clientY };
   }, { passive: true });
@@ -2025,27 +1574,18 @@
   });
   coverDialog.addEventListener("cancel", (event) => {
     event.preventDefault();
-    finishCoverOpening(true);
+    openCover();
   });
   motionReduced.addEventListener("change", () => {
     if (motionReduced.matches && coverOpening) finishCoverOpening();
   });
-  async function prepareCover() {
-    await prepareOpeningFrames(() => coverPending && coverPreparing);
-    if (!coverPending || !coverPreparing) return;
-    coverPreparing = false;
-    setOpeningLocked(false);
-    document.documentElement.classList.add("invitation-cover-open");
-    // Reuse the real first-photo layers in the envelope; no duplicate image request.
-    coverPhoto.append(frameHost, openingVeil);
-    coverDialog.showModal();
-    openingLoader.hidden = true;
-  }
   if (coverWanted) {
-    void prepareCover();
+    document.documentElement.classList.add("invitation-cover-open");
+    coverPhoto.append(frameHost);
+    coverDialog.showModal();
   } else {
-    startBgm();
-    if (autoplayActive) playOpening(++playbackRun);
-    else preloadGallery();
+    // Deep links and restored scroll positions bypass the envelope.
+    bgmButton.hidden = false;
+    preloadGallery();
   }
 })();

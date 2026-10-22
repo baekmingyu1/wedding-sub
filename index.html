@@ -21,11 +21,11 @@
   <!-- OPENING_PRELOAD_END -->
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&family=Gowun+Dodum&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css?v=43">
-  <link rel="stylesheet" href="play-pause.css?v=65">
+  <link rel="stylesheet" href="play-pause.css?v=66">
   <script src="opening-images.js" defer></script>
   <script src="gallery-images.js" defer></script>
   <script src="content.js?v=40" defer></script>
-  <script src="script.js?v=76" defer></script>
+  <script src="script.js?v=77" defer></script>
 </head>
 <body>
   <audio id="wedding-bgm" src="assets/audio/wedding-bgm-soft.m4a" preload="none" loop></audio>
@@ -68,7 +68,7 @@
 
   <nav class="side-nav is-hidden" aria-label="청첩장 바로가기" aria-hidden="true" inert>
 
-    <a href="#opening" data-nav="opening" aria-label="인트로로 이동"><span class="side-nav__dot"></span><span class="side-nav__label">인트로</span></a>
+    <a href="#opening" data-nav="opening" aria-label="첫 사진으로 이동"><span class="side-nav__dot"></span><span class="side-nav__label">첫 사진</span></a>
     <a href="#invitation" data-nav="invitation" aria-label="초대 멘트로 이동"><span class="side-nav__dot"></span><span class="side-nav__label">초대 멘트</span></a>
     <a href="#calendar" data-nav="calendar" aria-label="캘린더로 이동"><span class="side-nav__dot"></span><span class="side-nav__label">캘린더</span></a>
     <a href="#countdown" data-nav="countdown" aria-label="D-DAY로 이동"><span class="side-nav__dot"></span><span class="side-nav__label">D-DAY</span></a>
@@ -84,32 +84,9 @@
   </nav>
 
   <main>
-    <section class="opening" id="opening" aria-label="자동 재생 사진 오프닝">
+    <section class="opening opening--short" id="opening" aria-label="두 사람의 웨딩 사진" tabindex="-1">
       <div class="opening__sticky">
-        <div class="opening__frames" id="opening-frames" aria-hidden="true"></div>
-        <div class="opening__veil" aria-hidden="true"></div>
-        <div class="opening__loader" id="opening-loader" aria-hidden="true">
-          <span class="opening__loader-kicker">OUR DAYS, TOGETHER</span>
-          <strong class="opening__loader-mark">OUR <span>/</span> PACE</strong>
-          <div class="opening__loader-track"><span id="opening-loader-progress"></span></div>
-          <p>우리의 장면을 준비하고 있어요 <span id="opening-loader-count">00 / 15</span></p>
-        </div>
-        <div class="opening__copy">
-          <span class="opening__scene" id="opening-count">01 / 15</span>
-          <h1>Our <em>pace.</em></h1>
-          <p>함께 움직이고, 나란히 쉬며 만들어 온 우리의 시간.</p>
-        </div>
-        <div class="opening__final" id="opening-final" aria-hidden="true">
-          <span>OUR WEDDING INVITATION</span>
-          <p class="poster-title">Our <em>pace.</em></p>
-          <svg class="pace-mark" viewBox="0 0 240 100" fill="none" aria-hidden="true"><path pathLength="1" d="M8 16 C75 16 65 76 120 76 S181 35 232 35"/><path pathLength="1" d="M8 48 C66 48 77 76 120 76"/><circle cx="232" cy="35" r="3"/></svg>
-          <p class="poster-caption">이제, 같은 페이스로.</p>
-          <time class="poster-date" data-field="date"></time>
-        </div>
-        <div class="opening__bottom">
-          <a class="opening__control opening__skip" id="opening-skip" href="#invitation"><span>초대글 바로 보기</span><span class="opening__skip-arrow" aria-hidden="true">↘</span></a>
-        </div>
-        <div class="opening__progress" aria-hidden="true"><span id="opening-progress"></span></div>
+        <div class="opening__frames" id="opening-frames"></div>
       </div>
     </section>
 
@@ -224,7 +201,7 @@
     </section>
   </main>
 
-  <footer class="footer"><svg class="pace-mark" viewBox="0 0 240 100" fill="none" aria-hidden="true"><path pathLength="1" d="M8 16 C75 16 65 76 120 76 S181 35 232 35"/><path pathLength="1" d="M8 48 C66 48 77 76 120 76"/><circle cx="232" cy="35" r="3"/></svg><span class="footer__signature"><span>OUR PACE</span><span aria-hidden="true">/</span><span>PLAY · PAUSE · TOGETHER</span></span><strong data-field="couple"></strong><a class="inline-action" href="#opening"><span>처음부터 다시 보기</span><span aria-hidden="true">↑</span></a></footer>
+  <footer class="footer"><svg class="pace-mark" viewBox="0 0 240 100" fill="none" aria-hidden="true"><path pathLength="1" d="M8 16 C75 16 65 76 120 76 S181 35 232 35"/><path pathLength="1" d="M8 48 C66 48 77 76 120 76"/><circle cx="232" cy="35" r="3"/></svg><span class="footer__signature"><span>OUR PACE</span><span aria-hidden="true">/</span><span>PLAY · PAUSE · TOGETHER</span></span><strong data-field="couple"></strong><a class="inline-action" href="#opening"><span>첫 사진으로 돌아가기</span><span aria-hidden="true">↑</span></a></footer>
   <dialog id="parking-map-dialog" class="parking-map-dialog" aria-labelledby="parking-map-title">
     <div class="parking-map-dialog__header"><h2 id="parking-map-title">주차장 약도</h2><button id="parking-map-close" class="button button--light" type="button" aria-label="주차장 약도 닫기" autofocus>닫기</button></div>
     <img id="parking-map-image" data-src="assets/location/parking-map.png" width="872" height="644" alt="아르베 웨딩 주차장 약도. 언주역 5번 출구와 선정릉역 4번 출구 사이, 웨딩홀 맞은편에 제1 경복주차장, 제2 국민은행 주차장, 제3 PAXTOWER 주차장이 있습니다.">
