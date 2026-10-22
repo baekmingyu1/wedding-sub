@@ -1158,6 +1158,7 @@
   for (const groupName of ["신랑 측", "신부 측"]) {
     const group = document.createElement("details");
     group.className = "account__group";
+    group.open = true;
     const summary = document.createElement("summary");
     summary.textContent = groupName;
     const body = document.createElement("div");
