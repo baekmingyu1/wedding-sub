@@ -967,3 +967,51 @@ html.parking-map-open, html.parking-map-open body { overflow: hidden; }
 #opening-frames .opening__frame { opacity: 1; visibility: visible; transition: none; }
 #opening-frames .opening__frame img { object-fit: contain; transform: none; }
 #opening:focus { outline: none; }
+
+
+/* Local serif lettering follows the photograph, including its letterboxed edges. */
+@font-face {
+  font-family: "Cormorant Garamond Local";
+  src: url("assets/fonts/cormorant-garamond-latin-400.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+.opening-poster {
+  --opening-photo-ratio: .666667;
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 50%;
+  width: min(100%, calc(100dvh * var(--opening-photo-ratio)));
+  aspect-ratio: var(--opening-photo-ratio);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  color: #fffdfa;
+  text-shadow: 0 1px 3px rgba(32, 60, 88, .2);
+}
+.opening-poster__copy { position: absolute; top: 15.5%; left: 13%; right: 10%; text-align: left; }
+.opening .opening-poster__title,
+.opening-poster__words {
+  margin: 0;
+  font-family: "Cormorant Garamond Local", Georgia, serif;
+  font-weight: 400;
+  font-style: normal;
+  letter-spacing: -.025em;
+}
+.opening .opening-poster__title { font-size: min(12.8vw, calc(12.8dvh * var(--opening-photo-ratio))); line-height: 1; }
+.opening-poster__subtitle {
+  margin: .35em 0 0 .08em;
+  font-family: "Gowun Dodum", sans-serif;
+  font-size: min(3.7vw, calc(3.7dvh * var(--opening-photo-ratio)));
+  font-weight: 400;
+  line-height: 1.4;
+  letter-spacing: -.035em;
+}
+.opening-poster__words {
+  margin-top: .5em;
+  margin-left: .04em;
+  font-size: min(7.4vw, calc(7.4dvh * var(--opening-photo-ratio)));
+  line-height: 1.06;
+  white-space: pre-line;
+}
