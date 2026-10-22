@@ -59,7 +59,7 @@
   const photoUrl = (photo) => typeof photo === "string" ? photo : photo?.src;
 
   const openingImagePreparations = new WeakMap();
-  function prepareOpeningImage(image, refresh = false) {
+  function prepareImage(image, refresh = false) {
     const source = image.currentSrc;
     const usable = () => image.complete && image.naturalWidth > 0 && image.currentSrc === source;
     if (!usable()) return Promise.resolve(false);
@@ -136,7 +136,7 @@
       img.addEventListener("load", async () => {
         if (kind === "opening") {
           const loadingSource = img.currentSrc;
-          const usable = await prepareOpeningImage(img);
+          const usable = await prepareImage(img);
           if (img.currentSrc !== loadingSource) return;
           if (!usable) {
             if (wrapper.dataset.status !== "failed") {
@@ -223,14 +223,16 @@
     if (galleryPreloadStarted || navigator.connection?.saveData) return;
     galleryPreloadStarted = true;
     const photos = galleryPhotos.map((_, index) => resolveGalleryPhoto(index)).filter(photoUrl);
-    const waitForVisible = () => new Promise((resolve) => {
-      if (!document.hidden) { resolve(); return; }
+    const waitForBackground = () => new Promise((resolve) => {
+      if (!document.hidden && !galleryDialog.open) { resolve(); return; }
       const resume = () => {
-        if (document.hidden) return;
+        if (document.hidden || galleryDialog.open) return;
         document.removeEventListener("visibilitychange", resume);
+        galleryDialog.removeEventListener("close", resume);
         resolve();
       };
       document.addEventListener("visibilitychange", resume);
+      galleryDialog.addEventListener("close", resume);
     });
     const load = (photo, thumbnail) => new Promise((resolve) => {
       const img = new Image();
@@ -249,22 +251,19 @@
       img.src = photoUrl(photo);
     });
     const run = async () => {
-      // Prepare each photo's thumbnail and full size before advancing, so the
-      // first enlarged photos are ready while the visitor is still at the envelope.
-      let nextIndex = 0;
-      const worker = async () => {
-        while (nextIndex < photos.length) {
-          await waitForVisible();
-          if (navigator.connection?.saveData) return;
-          const photo = photos[nextIndex++];
-          if (!photo) return;
-          await load(photo, true);
-          await waitForVisible();
-          if (navigator.connection?.saveData) return;
-          await load(photo, false);
-        }
-      };
-      await Promise.all([worker(), worker()]);
+      // Cache lightweight previews first; do not let full-size downloads delay them.
+      for (const thumbnail of [true, false]) {
+        let nextIndex = 0;
+        const worker = async () => {
+          while (nextIndex < photos.length) {
+            await waitForBackground();
+            if (navigator.connection?.saveData) return;
+            const photo = photos[nextIndex++];
+            if (photo) await load(photo, thumbnail);
+          }
+        };
+        await Promise.all([worker(), worker()]);
+      }
     };
     void run();
   }
@@ -287,8 +286,8 @@
     const entry = { img, ready: false, promise: null };
     entry.promise = new Promise((resolve, reject) => {
       img.onload = async () => {
-        try { await img.decode(); } catch { /* Some webviews cannot decode explicitly. */ }
-        if (!img.naturalWidth) { reject(new Error("Invalid photo")); return; }
+        // A webview decode() may never settle; use the bounded native-render fallback.
+        if (!await prepareImage(img, true)) { reject(new Error("Invalid photo")); return; }
         entry.ready = true;
         resolve(img);
       };
@@ -304,7 +303,7 @@
       if (Math.abs(key - index) > 2) photoCache.delete(key);
     }
     if (navigator.connection?.saveData) return;
-    for (const offset of [1, -1, 2, -2]) {
+    for (const offset of [1, -1]) {
       const neighbor = index + offset;
       if (neighbor >= 0 && neighbor < galleryPhotos.length) prepareGalleryPhoto(neighbor);
     }
@@ -331,15 +330,25 @@
     window.clearTimeout(photoLoadingTimer);
     photoStatus.textContent = "";
     const entry = prepareGalleryPhoto(index, "high");
-    // Keep the previous photo visible until the next full-size image is decoded.
-    if (!photoStage.firstChild) {
+    // Show the selected photo immediately at preview quality, then upgrade it.
+    // Guard both paths so a late preview cannot replace a newer or full-size photo.
+    if (!entry.ready) {
       const thumbnail = photoThumbnails.children[index]?.querySelector("img");
-      if (thumbnail?.complete && thumbnail.naturalWidth) {
-        const preview = new Image();
-        preview.src = thumbnail.currentSrc;
-        preview.alt = entry.img.alt;
+      const photo = resolveGalleryPhoto(index);
+      const preview = new Image();
+      preview.alt = entry.img.alt;
+      preview.decoding = "async";
+      preview.draggable = false;
+      preview.fetchPriority = "high";
+      const showPreview = () => {
+        if (request !== photoRequest || !galleryDialog.open || entry.ready || !preview.naturalWidth) return;
         photoStage.replaceChildren(preview);
-      }
+      };
+      preview.onload = showPreview;
+      // The smallest generated candidate is 640px, also used by the thumbnail rail.
+      preview.src = thumbnail?.complete && thumbnail.naturalWidth ? thumbnail.currentSrc
+        : photo?.srcset?.split(",")[0].trim().split(/\s+/)[0] || photoUrl(photo) || "";
+      if (preview.complete) showPreview();
     }
     if (!entry.ready) photoLoadingTimer = window.setTimeout(() => {
       if (request === photoRequest) photoStatus.textContent = "사진 불러오는 중…";
