@@ -59,7 +59,7 @@
   const photoUrl = (photo) => typeof photo === "string" ? photo : photo?.src;
 
   const openingImagePreparations = new WeakMap();
-  function prepareOpeningImage(image, refresh = false) {
+  function prepareImage(image, refresh = false) {
     const source = image.currentSrc;
     const usable = () => image.complete && image.naturalWidth > 0 && image.currentSrc === source;
     if (!usable()) return Promise.resolve(false);
@@ -109,7 +109,7 @@
       if (photo.mobileSrcset) {
         const source = document.createElement("source");
         source.media = "(max-width: 760px)";
-        source.sizes = kind === "opening" ? "135vw" : sizes;
+        source.sizes = kind === "opening" ? "100vw" : sizes;
         if (kind === "opening") source.dataset.srcset = photo.mobileSrcset;
         else source.srcset = photo.mobileSrcset;
         picture.append(source);
@@ -136,7 +136,7 @@
       img.addEventListener("load", async () => {
         if (kind === "opening") {
           const loadingSource = img.currentSrc;
-          const usable = await prepareOpeningImage(img);
+          const usable = await prepareImage(img);
           if (img.currentSrc !== loadingSource) return;
           if (!usable) {
             if (wrapper.dataset.status !== "failed") {
@@ -217,20 +217,25 @@
     Math.round(index * (openingPhotos.length - 1) / Math.max(1, galleryPhotos.length - 1))
   ];
 
+  const galleryDisplayUrl = (photo) => window.matchMedia("(max-width: 760px)").matches
+    ? photo?.mobileSrc || photoUrl(photo) : photoUrl(photo);
+
   // Warm the HTTP cache on entry, without retaining every decoded image.
   let galleryPreloadStarted = false;
   function preloadGallery() {
     if (galleryPreloadStarted || navigator.connection?.saveData) return;
     galleryPreloadStarted = true;
     const photos = galleryPhotos.map((_, index) => resolveGalleryPhoto(index)).filter(photoUrl);
-    const waitForVisible = () => new Promise((resolve) => {
-      if (!document.hidden) { resolve(); return; }
+    const waitForBackground = () => new Promise((resolve) => {
+      if (!document.hidden && !galleryDialog.open) { resolve(); return; }
       const resume = () => {
-        if (document.hidden) return;
+        if (document.hidden || galleryDialog.open) return;
         document.removeEventListener("visibilitychange", resume);
+        galleryDialog.removeEventListener("close", resume);
         resolve();
       };
       document.addEventListener("visibilitychange", resume);
+      galleryDialog.addEventListener("close", resume);
     });
     const load = (photo, thumbnail) => new Promise((resolve) => {
       const img = new Image();
@@ -240,31 +245,32 @@
         img.onload = img.onerror = null;
         resolve();
       };
+      if (thumbnail && photo.thumbnail) {
+        img.src = photo.thumbnail;
+        return;
+      }
       if (thumbnail) {
         img.sizes = gallerySizes;
         const srcset = window.matchMedia("(max-width: 760px)").matches
           ? photo.mobileSrcset || photo.srcset : photo.srcset;
         if (srcset) img.srcset = srcset;
       }
-      img.src = photoUrl(photo);
+      img.src = thumbnail ? photoUrl(photo) : galleryDisplayUrl(photo);
     });
     const run = async () => {
-      // Prepare each photo's thumbnail and full size before advancing, so the
-      // first enlarged photos are ready while the visitor is still at the envelope.
-      let nextIndex = 0;
-      const worker = async () => {
-        while (nextIndex < photos.length) {
-          await waitForVisible();
-          if (navigator.connection?.saveData) return;
-          const photo = photos[nextIndex++];
-          if (!photo) return;
-          await load(photo, true);
-          await waitForVisible();
-          if (navigator.connection?.saveData) return;
-          await load(photo, false);
-        }
-      };
-      await Promise.all([worker(), worker()]);
+      // Cache lightweight previews first; do not let full-size downloads delay them.
+      for (const thumbnail of [true, false]) {
+        let nextIndex = 0;
+        const worker = async () => {
+          while (nextIndex < photos.length) {
+            await waitForBackground();
+            if (navigator.connection?.saveData) return;
+            const photo = photos[nextIndex++];
+            if (photo) await load(photo, thumbnail);
+          }
+        };
+        await Promise.all([worker(), worker()]);
+      }
     };
     void run();
   }
@@ -287,8 +293,8 @@
     const entry = { img, ready: false, promise: null };
     entry.promise = new Promise((resolve, reject) => {
       img.onload = async () => {
-        try { await img.decode(); } catch { /* Some webviews cannot decode explicitly. */ }
-        if (!img.naturalWidth) { reject(new Error("Invalid photo")); return; }
+        // A webview decode() may never settle; use the bounded native-render fallback.
+        if (!await prepareImage(img, true)) { reject(new Error("Invalid photo")); return; }
         entry.ready = true;
         resolve(img);
       };
@@ -296,7 +302,7 @@
     });
     photoCache.set(index, entry);
     entry.promise.catch(() => { if (photoCache.get(index) === entry) photoCache.delete(index); });
-    img.src = photoUrl(resolveGalleryPhoto(index)) || "";
+    img.src = galleryDisplayUrl(resolveGalleryPhoto(index)) || "";
     return entry;
   }
   function warmGalleryPhotos(index) {
@@ -304,7 +310,7 @@
       if (Math.abs(key - index) > 2) photoCache.delete(key);
     }
     if (navigator.connection?.saveData) return;
-    for (const offset of [1, -1, 2, -2]) {
+    for (const offset of [1, -1]) {
       const neighbor = index + offset;
       if (neighbor >= 0 && neighbor < galleryPhotos.length) prepareGalleryPhoto(neighbor);
     }
@@ -331,15 +337,25 @@
     window.clearTimeout(photoLoadingTimer);
     photoStatus.textContent = "";
     const entry = prepareGalleryPhoto(index, "high");
-    // Keep the previous photo visible until the next full-size image is decoded.
-    if (!photoStage.firstChild) {
+    // Show the selected photo immediately at preview quality, then upgrade it.
+    // Guard both paths so a late preview cannot replace a newer or full-size photo.
+    if (!entry.ready) {
       const thumbnail = photoThumbnails.children[index]?.querySelector("img");
-      if (thumbnail?.complete && thumbnail.naturalWidth) {
-        const preview = new Image();
-        preview.src = thumbnail.currentSrc;
-        preview.alt = entry.img.alt;
+      const photo = resolveGalleryPhoto(index);
+      const preview = new Image();
+      preview.alt = entry.img.alt;
+      preview.decoding = "async";
+      preview.draggable = false;
+      preview.fetchPriority = "high";
+      const showPreview = () => {
+        if (request !== photoRequest || !galleryDialog.open || entry.ready || !preview.naturalWidth) return;
         photoStage.replaceChildren(preview);
-      }
+      };
+      preview.onload = showPreview;
+      // Reuse the lightweight thumbnail before upgrading to the display-sized photo.
+      preview.src = thumbnail?.complete && thumbnail.naturalWidth ? thumbnail.currentSrc
+        : photo?.srcset?.split(",")[0].trim().split(/\s+/)[0] || photoUrl(photo) || "";
+      if (preview.complete) showPreview();
     }
     if (!entry.ready) photoLoadingTimer = window.setTimeout(() => {
       if (request === photoRequest) photoStatus.textContent = "사진 불러오는 중…";
@@ -386,8 +402,8 @@
         img.loading = "lazy";
         img.decoding = "async";
         img.draggable = false;
-        if (source.srcset) { img.sizes = "64px"; img.srcset = source.srcset; }
-        img.src = photoUrl(source) || "";
+        if (!source.thumbnail && source.srcset) { img.sizes = "64px"; img.srcset = source.srcset; }
+        img.src = source.thumbnail || photoUrl(source) || "";
         button.append(img);
         button.addEventListener("click", () => showGalleryPhoto(position));
         photoThumbnails.append(button);
