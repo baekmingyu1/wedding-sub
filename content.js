@@ -65,7 +65,7 @@ window.WEDDING_CONTENT = {
     { side: "신부 측", label: "신부 아버지", bank: "농협은행", number: "100067-56-096708", holder: "박명환" },
     { side: "신부 측", label: "신부 어머니", bank: "농협은행", number: "421014-56-037167", holder: "전영숙" }
   ],
-  // Generated from assets/opening/DSC*.jpg by npm run images.
-  openingPhotos: window.OPENING_IMAGES || [],
+  // Use gallery photo 03 for both the envelope and the single opening photo.
+  openingPhotos: [window.GALLERY_IMAGES?.[2]].filter(Boolean),
   galleryPhotos: window.GALLERY_IMAGES || []
 };

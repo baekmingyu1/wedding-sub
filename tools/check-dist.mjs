@@ -42,9 +42,6 @@ for (const photo of photos) {
     ...photo.mobileSrcset.split(", ").map((candidate) => candidate.split(" ")[0])];
   for (const path of paths) await access(join(output, path));
 }
-if (!html.includes(photos[0].mobileSrcset) || !html.includes(photos[0].srcset)) {
-  throw new Error("첫 사진 preload가 화면 표시 후보와 다릅니다.");
-}
 if ((await readdir(join(output, "assets", "opening"))).some((name) => /^DSC\d+\.jpg$/i.test(name))) {
   throw new Error("원본 JPG가 배포 폴더에 포함됐습니다.");
 }
@@ -52,6 +49,14 @@ const galleryManifest = files.find((file) => /^gallery-images\.[a-f0-9]{10}\.js$
 const gallerySandbox = { window: {} };
 runInNewContext(await readFile(join(output, galleryManifest), "utf8"), gallerySandbox);
 const galleryPhotos = gallerySandbox.window.GALLERY_IMAGES;
+const contentManifest = files.find((file) => /^content\.[a-f0-9]{10}\.js$/.test(file));
+runInNewContext(await readFile(join(output, contentManifest), "utf8"), gallerySandbox);
+const openingPhoto = gallerySandbox.window.WEDDING_CONTENT.openingPhotos?.[0];
+if (!openingPhoto?.src || !html.includes(`href="${openingPhoto.src}"`) ||
+    !html.includes(`imagesrcset="${openingPhoto.srcset}"`)) {
+  throw new Error("대표 사진 preload가 content.js의 사진과 다릅니다.");
+}
+await access(join(output, openingPhoto.src));
 const sourceGalleryCount = (await readdir(join(root, "assets", "gallery"))).filter((name) => /\.jpe?g$/i.test(name)).length;
 if (!Array.isArray(galleryPhotos) || galleryPhotos.length !== sourceGalleryCount) {
   throw new Error("갤러리 사진 목록과 원본 사진 수가 다릅니다.");
