@@ -49,7 +49,7 @@ h2 em { color: var(--accent); font-style: normal; }
 
 /* Full-screen sequence: the original photographs stay fixed while scrolling. */
 .opening { height: var(--sequence-height, 410svh); min-height: 1600px; }
-.opening__sticky { position: sticky; top: 0; height: 100svh; min-height: 580px; overflow: hidden; isolation: isolate; background: #d4c3b2; }
+.opening__sticky { position: sticky; top: 0; height: 100svh; min-height: 580px; overflow: hidden; isolation: isolate; background: var(--paper); }
 .opening__frames, .opening__frame, .opening__veil { position: absolute; inset: 0; }
 .opening__frames { z-index: 0; pointer-events: none; }
 .opening__frame { overflow: hidden; opacity: 0; visibility: hidden; transition: opacity .1s ease; }
@@ -346,7 +346,7 @@ html.invitation-cover-open, html.invitation-cover-open body { overflow: hidden; 
 @media (hover: hover) and (pointer: fine) {
   .invitation-cover__open:not([aria-busy]):hover .invitation-cover__seal { filter: brightness(1.035); }
 }
-.invitation-cover__reveal { position: absolute; z-index: 10; overflow: hidden; background: var(--cream); pointer-events: none; }
+.invitation-cover__reveal { position: absolute; z-index: 10; overflow: hidden; background: var(--paper); pointer-events: none; }
 .invitation-cover.is-opening .invitation-cover__open { cursor: default; }
 .invitation-cover.is-opening .invitation-cover__seal { animation: envelope-unseal .3s ease forwards; }
 .invitation-cover.is-opening .invitation-cover__flap { animation: envelope-unfold .6s .15s ease-in-out forwards; }
