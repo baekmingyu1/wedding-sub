@@ -961,3 +961,9 @@ html.parking-map-open, html.parking-map-open body { overflow: hidden; }
 /* Text and meaningful action icons share one spacing rule. */
 .inline-action, .calendar-picker__web, .calendar-diagnostics a { display: inline-flex; align-items: center; justify-content: center; gap: var(--icon-gap); }
 .inline-action > [aria-hidden="true"] { flex-shrink: 0; }
+
+/* A single, uncropped photograph followed by ordinary document scrolling. */
+.opening--short .opening__sticky { position: relative; }
+#opening-frames .opening__frame { opacity: 1; visibility: visible; transition: none; }
+#opening-frames .opening__frame img { object-fit: contain; transform: none; }
+#opening:focus { outline: none; }
