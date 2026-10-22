@@ -32,6 +32,7 @@
 
   const motionReduced = window.matchMedia("(prefers-reduced-motion: reduce)");
   const frameHost = document.getElementById("opening-frames");
+  const openingPoster = document.getElementById("opening-poster");
   const galleryHost = document.getElementById("gallery-grid");
   const accountHost = document.getElementById("account-list");
   const toast = document.getElementById("toast");
@@ -154,12 +155,15 @@
         wrapper.classList.remove("opening__frame--fallback");
         if (kind === "opening") {
           wrapper.dataset.status = "ready";
+          openingPoster.style.setProperty("--opening-photo-ratio", img.naturalWidth / img.naturalHeight);
+          openingPoster.hidden = false;
           scheduleUpdate();
         }
       });
       img.addEventListener("error", () => {
         if (kind !== "opening") { wrapper.classList.add("gallery__item--failed"); return; }
         placeholder.textContent = "사진을 불러올 수 없습니다";
+        openingPoster.hidden = true;
         wrapper.dataset.status = "failed";
         scheduleUpdate();
       });
