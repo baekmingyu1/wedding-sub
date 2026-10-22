@@ -217,7 +217,7 @@
     Math.round(index * (openingPhotos.length - 1) / Math.max(1, galleryPhotos.length - 1))
   ];
 
-  // Warm the HTTP cache after the envelope is opened, without retaining every decoded image.
+  // Warm the HTTP cache on entry, without retaining every decoded image.
   let galleryPreloadStarted = false;
   function preloadGallery() {
     if (galleryPreloadStarted || navigator.connection?.saveData) return;
@@ -249,19 +249,22 @@
       img.src = photoUrl(photo);
     });
     const run = async () => {
-      // Finish all grid sizes before spending bandwidth on enlarged photos.
-      for (const thumbnail of [true, false]) {
-        let nextIndex = 0;
-        const worker = async () => {
-          while (nextIndex < photos.length) {
-            await waitForVisible();
-            if (navigator.connection?.saveData) return;
-            const photo = photos[nextIndex++];
-            if (photo) await load(photo, thumbnail);
-          }
-        };
-        await Promise.all([worker(), worker()]);
-      }
+      // Prepare each photo's thumbnail and full size before advancing, so the
+      // first enlarged photos are ready while the visitor is still at the envelope.
+      let nextIndex = 0;
+      const worker = async () => {
+        while (nextIndex < photos.length) {
+          await waitForVisible();
+          if (navigator.connection?.saveData) return;
+          const photo = photos[nextIndex++];
+          if (!photo) return;
+          await load(photo, true);
+          await waitForVisible();
+          if (navigator.connection?.saveData) return;
+          await load(photo, false);
+        }
+      };
+      await Promise.all([worker(), worker()]);
     };
     void run();
   }
@@ -339,7 +342,7 @@
       }
     }
     if (!entry.ready) photoLoadingTimer = window.setTimeout(() => {
-      if (request === photoRequest) photoStatus.textContent = "다음 사진을 준비하고 있습니다.";
+      if (request === photoRequest) photoStatus.textContent = "사진 불러오는 중…";
     }, 700);
     try {
       const img = entry.ready ? entry.img : await entry.promise;
@@ -1464,7 +1467,6 @@
     bgmButton.hidden = false;
     opening.focus({ preventScroll: true });
     scheduleUpdate();
-    preloadGallery();
   }
   function revealCoverPhoto() {
     coverDialog.classList.add("is-opening");
@@ -1587,6 +1589,6 @@
   } else {
     // Deep links and restored scroll positions bypass the envelope.
     bgmButton.hidden = false;
-    preloadGallery();
   }
+  preloadGallery();
 })();
