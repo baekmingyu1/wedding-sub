@@ -339,7 +339,7 @@
       }
     }
     if (!entry.ready) photoLoadingTimer = window.setTimeout(() => {
-      if (request === photoRequest) photoStatus.textContent = "다음 사진을 준비하고 있습니다.";
+      if (request === photoRequest) photoStatus.textContent = "사진 불러오는 중…";
     }, 700);
     try {
       const img = entry.ready ? entry.img : await entry.promise;

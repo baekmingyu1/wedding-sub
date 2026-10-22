@@ -19,12 +19,12 @@
   <link rel="preload" as="image" href="assets/gallery/web/03-1200-4979c93929.webp" imagesrcset="assets/gallery/web/03-640-4979c93929.webp 640w, assets/gallery/web/03-1200-4979c93929.webp 1200w" imagesizes="100vw" fetchpriority="high">
   <!-- OPENING_PRELOAD_END -->
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&family=Gowun+Dodum&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=43">
+  <link rel="stylesheet" href="styles.css?v=45">
   <link rel="stylesheet" href="play-pause.css?v=66">
   <script src="opening-images.js" defer></script>
   <script src="gallery-images.js" defer></script>
   <script src="content.js?v=41" defer></script>
-  <script src="script.js?v=78" defer></script>
+  <script src="script.js?v=79" defer></script>
 </head>
 <body>
   <audio id="wedding-bgm" src="assets/audio/wedding-bgm-soft.m4a" preload="none" loop></audio>
@@ -225,8 +225,8 @@
     <button id="calendar-picker-close" class="calendar-picker__close" type="button">닫기</button>
   </dialog>
   <dialog id="gallery-dialog" class="gallery-dialog" aria-label="사진 확대 보기">
-    <div class="gallery-dialog__header"><span id="gallery-photo-counter" aria-live="polite"></span><button id="gallery-photo-close" type="button" autofocus>닫기</button></div>
-    <div class="gallery-dialog__viewport"><div id="gallery-photo-stage" class="gallery-dialog__stage"></div><p id="gallery-photo-status" class="gallery-dialog__status" role="status"></p></div>
+    <div class="gallery-dialog__header"><span id="gallery-photo-counter" aria-live="polite"></span><p id="gallery-photo-status" class="gallery-dialog__status" role="status"></p><button id="gallery-photo-close" type="button" autofocus>닫기</button></div>
+    <div class="gallery-dialog__viewport"><div id="gallery-photo-stage" class="gallery-dialog__stage"></div></div>
     <div id="gallery-photo-thumbnails" class="gallery-dialog__thumbnails" role="group" aria-label="전체 사진 선택"></div>
     <div class="gallery-dialog__controls"><button id="gallery-photo-previous" type="button" aria-label="이전 사진" class="inline-action"><span aria-hidden="true">←</span><span>이전</span></button><button id="gallery-photo-next" type="button" aria-label="다음 사진" class="inline-action"><span>다음</span><span aria-hidden="true">→</span></button></div>
   </dialog>
