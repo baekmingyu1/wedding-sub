@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import sharp from "sharp";
 import { access, readFile, readdir, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -58,14 +59,43 @@ if (!openingPhoto?.src || !html.includes(`href="${openingPhoto.src}"`) ||
 }
 await access(join(output, openingPhoto.src));
 const sourceGalleryCount = (await readdir(join(root, "assets", "gallery"))).filter((name) => /\.jpe?g$/i.test(name)).length;
-if (!Array.isArray(galleryPhotos) || galleryPhotos.length !== sourceGalleryCount) {
+if (!Array.isArray(galleryPhotos) || !galleryPhotos.length ||
+    (sourceGalleryCount > 0 && galleryPhotos.length !== sourceGalleryCount) ||
+    new Set(galleryPhotos.map((photo) => photo.src)).size !== galleryPhotos.length) {
   throw new Error("갤러리 사진 목록과 원본 사진 수가 다릅니다.");
 }
 for (const photo of galleryPhotos) {
-  for (const path of photo.srcset.split(", ").map((candidate) => candidate.split(" ")[0])) {
-    await access(join(output, path));
+  if (!photo.thumbnail || !photo.mobileSrc || !photo.mobileSrcset) {
+    throw new Error("갤러리 썸네일 또는 모바일 이미지가 없습니다.");
+  }
+  for (const candidate of photo.srcset.split(", ")) {
+    const [path, descriptor] = candidate.split(" ");
+    const bytes = await readFile(join(output, path));
+    const metadata = await sharp(bytes).metadata();
+    if (!metadata.width || metadata.width > Number.parseInt(descriptor, 10) ||
+        Math.abs(metadata.width / metadata.height - photo.width / photo.height) > .01) {
+      throw new Error(`갤러리 이미지 크기 또는 비율이 맞지 않습니다: ${path}`);
+    }
+    if (path === photo.thumbnail || path === photo.mobileSrc) {
+      const hash = createHash("sha256").update(bytes).digest("hex").slice(0, 10);
+      if (!path.endsWith(`-${hash}.webp`)) throw new Error(`최적화 이미지 해시가 다릅니다: ${path}`);
+    }
+  }
+  for (const candidate of photo.mobileSrcset.split(", ")) {
+    if (!photo.srcset.split(", ").includes(candidate) || Number.parseInt(candidate.split(" ")[1], 10) > 960) {
+      throw new Error("모바일 후보에 없는 이미지 또는 960px보다 큰 이미지가 포함됐습니다.");
+    }
+  }
+  if (!photo.srcset.includes(`${photo.thumbnail} 320w`) ||
+      !photo.mobileSrcset.includes(`${photo.mobileSrc} 960w`)) {
+    throw new Error("썸네일·모바일 이미지가 표시 후보와 다릅니다.");
   }
 }
+if (openingPhoto.mobileSrcset && (!html.includes(`imagesrcset="${openingPhoto.mobileSrcset}"`) ||
+    !html.includes(`href="${openingPhoto.mobileSrc}"`))) {
+  throw new Error("대표 사진 모바일 preload가 화면 표시 후보와 다릅니다.");
+}
+if (!sourceGalleryCount) console.log("Local JPG originals absent; validated manifest assets, dimensions and optimized image hashes.");
 if ((await readdir(join(output, "assets", "gallery"))).some((name) => /\.jpe?g$/i.test(name))) {
   throw new Error("갤러리 원본 JPG가 배포 폴더에 포함됐습니다.");
 }

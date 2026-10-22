@@ -109,7 +109,7 @@
       if (photo.mobileSrcset) {
         const source = document.createElement("source");
         source.media = "(max-width: 760px)";
-        source.sizes = kind === "opening" ? "135vw" : sizes;
+        source.sizes = kind === "opening" ? "100vw" : sizes;
         if (kind === "opening") source.dataset.srcset = photo.mobileSrcset;
         else source.srcset = photo.mobileSrcset;
         picture.append(source);
@@ -217,6 +217,9 @@
     Math.round(index * (openingPhotos.length - 1) / Math.max(1, galleryPhotos.length - 1))
   ];
 
+  const galleryDisplayUrl = (photo) => window.matchMedia("(max-width: 760px)").matches
+    ? photo?.mobileSrc || photoUrl(photo) : photoUrl(photo);
+
   // Warm the HTTP cache on entry, without retaining every decoded image.
   let galleryPreloadStarted = false;
   function preloadGallery() {
@@ -242,13 +245,17 @@
         img.onload = img.onerror = null;
         resolve();
       };
+      if (thumbnail && photo.thumbnail) {
+        img.src = photo.thumbnail;
+        return;
+      }
       if (thumbnail) {
         img.sizes = gallerySizes;
         const srcset = window.matchMedia("(max-width: 760px)").matches
           ? photo.mobileSrcset || photo.srcset : photo.srcset;
         if (srcset) img.srcset = srcset;
       }
-      img.src = photoUrl(photo);
+      img.src = thumbnail ? photoUrl(photo) : galleryDisplayUrl(photo);
     });
     const run = async () => {
       // Cache lightweight previews first; do not let full-size downloads delay them.
@@ -295,7 +302,7 @@
     });
     photoCache.set(index, entry);
     entry.promise.catch(() => { if (photoCache.get(index) === entry) photoCache.delete(index); });
-    img.src = photoUrl(resolveGalleryPhoto(index)) || "";
+    img.src = galleryDisplayUrl(resolveGalleryPhoto(index)) || "";
     return entry;
   }
   function warmGalleryPhotos(index) {
@@ -345,7 +352,7 @@
         photoStage.replaceChildren(preview);
       };
       preview.onload = showPreview;
-      // The smallest generated candidate is 640px, also used by the thumbnail rail.
+      // Reuse the lightweight thumbnail before upgrading to the display-sized photo.
       preview.src = thumbnail?.complete && thumbnail.naturalWidth ? thumbnail.currentSrc
         : photo?.srcset?.split(",")[0].trim().split(/\s+/)[0] || photoUrl(photo) || "";
       if (preview.complete) showPreview();
@@ -395,8 +402,8 @@
         img.loading = "lazy";
         img.decoding = "async";
         img.draggable = false;
-        if (source.srcset) { img.sizes = "64px"; img.srcset = source.srcset; }
-        img.src = photoUrl(source) || "";
+        if (!source.thumbnail && source.srcset) { img.sizes = "64px"; img.srcset = source.srcset; }
+        img.src = source.thumbnail || photoUrl(source) || "";
         button.append(img);
         button.addEventListener("click", () => showGalleryPhoto(position));
         photoThumbnails.append(button);
